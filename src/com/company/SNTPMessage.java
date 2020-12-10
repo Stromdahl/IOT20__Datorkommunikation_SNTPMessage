@@ -1,81 +1,34 @@
 package com.company;
 
-import java.util.Arrays;
-
 public class SNTPMessage {
     private byte leapIndicator = 0;
     private byte versionNumber = 4;
-    private byte mode = 0;
+    private final byte mode;
 
     private short stratum = 0;
     private short pollInterval = 0;
     private byte precision = 0;
 
-    //rootDelay 32-bit signed fixed-point number
-    //fraction point between bits 15 and 16
-    //
-    // 0000 0000 0000 0000 . 0000 0000 0000 0000
-    //
     private double rootDelay = 0;
     private double rootDispersion = 0;
 
-    //Reference identifier
-    //32bit sträng, 4 ascii-tecken
-    //80,  80, 83,   0,
-    //P    P    S
-    private byte[] referenceIdentifier = {0, 0, 0, 0};
+    private final byte[] referenceIdentifier = {0, 0, 0, 0};
 
     private double referenceTimestamp = 0;
     private double originateTimestamp = 0;
     private double receiveTimestamp = 0;
-    private double transmitTimestamp = 0;
+    private final double transmitTimestamp;
 
 
     public SNTPMessage(byte[] buf) {
         byte b = buf[0];
-        // b = 36
-        //  0 1  2 3 4 5 6 7
-        // |LI |  VN  | Mode |
-        //  0 0 1 0 0  1 0 0
-        //   0    4      4
-        //
+
         leapIndicator = (byte) ((b >> 6) & 0x3);
-        // 00100100
-        // >> shiftar alla bits 6 steg till höger
-        // 0001 0010
-        // 0000 1001
-        // 0000 0100
-        // 0000 0010
-        // 0000 0001
-        // 0000 0000 Resultatet av b>>6
-        // 0x3? -> 0000 0011
-        // 36 decimalt -> 24 hex -> 0010 0100
-        //
         versionNumber = (byte) ((b >> 3) & 0x7);
-        // shifta 3 steg till höger
-        // 0010 0100 -> 0000 0100
-        // & 0x7 ?
-        // 0000 0100 & 0000 0111
-        //
-        // 0000 0100
-        // 0000 0111
-        // 0000 0100
-
         mode = (byte) (b & 0x7);
-        // 0010 0100
-        // 0000 0111
-        // 0000 0100 -> 4
-
         stratum = unsignedByteToShort(buf[1]);
         pollInterval = unsignedByteToShort(buf[2]);
         precision = buf[3];
-
-        //Vi får datan för root delay som 4 bytes d.v.s. 32 bits i en följd
-        // 1000 0100 0110 0010 | 0110 0100 1000 1001
-        //     33890
-        // buf[4] = 132
-        // buf[5] = 98
-        //
         rootDelay = (buf[4] * 256.0)
                 + unsignedByteToShort(buf[5])
                 + (unsignedByteToShort(buf[6]) / (0xff + 1.0))
@@ -83,12 +36,9 @@ public class SNTPMessage {
 
         rootDispersion = (buf[8] * 256.0)
                 + unsignedByteToShort(buf[9])
-                + (unsignedByteToShort(buf[10]) / (0xff + 1.0)) //256 0xff+1
-                + (unsignedByteToShort(buf[11]) / (0xffff + 1.0)); //0xffff+1
+                + (unsignedByteToShort(buf[10]) / (0xff + 1.0))
+                + (unsignedByteToShort(buf[11]) / (0xffff + 1.0));
 
-        //0101 0000 | 0101 0000 | 0101 0011 | 0000 0000
-        // 80           80         83          0
-        //ASCII PPS
         referenceIdentifier[0] = buf[12];
         referenceIdentifier[1] = buf[13];
         referenceIdentifier[2] = buf[14];
@@ -115,14 +65,10 @@ public class SNTPMessage {
     }
 
     private short unsignedByteToShort(byte b) {
-        //Exempel b = 1101 1001, översta biten är satt och java tolkar som ett negativt tal
-        //Kolla om översta biten är satt genom bitvis and med 0x80 eller 1000 0000
         if ((b & 0x80) == 0x80) {
-            // 0x80 = 1000 0000
-            // 1101 1001
             return (short) (128 + (b & 0x7f));
         }
-        return (short) b;
+        return b;
     }
 
     public byte[] toByteArray() {
@@ -160,13 +106,12 @@ public class SNTPMessage {
     private void doubleToByteArray(byte[] array, int index, double data) {
         for (int i = 0; i < 8; i++) {
             array[index + i] = (byte) (data / Math.pow(2, (3 - i) * 8));
-            data -= (double) (unsignedByteToShort(array[index + i]) * Math.pow(2, (3 - i) * 8));
+            data -= unsignedByteToShort(array[index + i]) * Math.pow(2, (3 - i) * 8);
         }
     }
 
     public String toString() {
         return "Leap Indicator: " + leapIndicator +
-                "\nReference Identifier: " + versionNumber +
                 "\nVersion Number: " + versionNumber +
                 "\nMode: " + mode +
                 "\nStratum: " + stratum +
@@ -174,14 +119,44 @@ public class SNTPMessage {
                 "\nPrecision: " + precision +
                 "\nRoot Delay: " + rootDelay +
                 "\nRoot Dispersion: " + rootDispersion +
-                "\nReference Identifier: " + Arrays.toString(referenceIdentifier) +
+                "\nReference Identifier: " + referenceIdentifierToString() +
                 "\nReference Timestamp: " + referenceTimestamp +
                 "\nOriginate Timestamp: " + originateTimestamp +
                 "\nReceive Timestamp: " + rootDispersion +
                 "\nTransmit Timestamp: " + rootDispersion;
     }
 
-    public double getTransmitTimestamp() {
-        return transmitTimestamp;
+    public String referenceIdentifierToString() {
+
+        if(stratum==0 || stratum==1)
+        {
+            return new String(referenceIdentifier);
+        }
+
+        else if(versionNumber==3)
+        {
+            return unsignedByteToShort(referenceIdentifier[0]) + "." +
+                    unsignedByteToShort(referenceIdentifier[1]) + "." +
+                    unsignedByteToShort(referenceIdentifier[2]) + "." +
+                    unsignedByteToShort(referenceIdentifier[3]);
+        }
+
+        else if(versionNumber==4)
+        {
+            return "" + ((unsignedByteToShort(referenceIdentifier[0]) / 256.0) +
+                    (unsignedByteToShort(referenceIdentifier[1]) / 65536.0) +
+                    (unsignedByteToShort(referenceIdentifier[2]) / 16777216.0) +
+                    (unsignedByteToShort(referenceIdentifier[3]) / 4294967296.0));
+        }
+
+        return "";
+    }
+
+    public double getRoundtripDelay(double systemTime){
+        return (systemTime - this.originateTimestamp) - (this.transmitTimestamp - this.receiveTimestamp);
+    }
+
+    public double getSystemClockOffset(double systemTime){
+        return ((this.receiveTimestamp - this.originateTimestamp) + (this.transmitTimestamp - systemTime)) / 2;
     }
 }
